@@ -47,12 +47,12 @@ Both pipelines update a **shared GitOps repository**. Argo CD watches the reposi
        Kubernetes Agents               Kubernetes Runner
               │                               │
      ┌────────┴────────┐             ┌────────┴──────────┐
-     │ SonarQube       │             │ Hadolint           │
-     │ Maven + Nexus   │             │ Kaniko Build       │
-     │ Kaniko Build    │             │ Trivy Image Scan   │
-     │ Syft + Grype    │             │ Trivy Config Scan  │
-     │ GitOps Update   │             │ Gitleaks           │
-     │ OWASP ZAP       │             │ CycloneDX SBOM      │
+     │ SonarQube       │             │ Hadolint          │
+     │ Maven + Nexus   │             │ Kaniko Build      │
+     │ Kaniko Build    │             │ Trivy Image Scan  │
+     │ Syft + Grype    │             │ Trivy Config Scan │
+     │ GitOps Update   │             │ Gitleaks          │
+     │ OWASP ZAP       │             │ CycloneDX SBOM    │
      └────────┬────────┘             └────────┬──────────┘
               │                               │
               └───────────────┬───────────────┘
