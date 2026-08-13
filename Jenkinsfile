@@ -210,27 +210,22 @@ EOF
 } 
 
         // Final step: scan the application itself while it's actually running in the cluster
-       stage('DAST Scan (OWASP ZAP)') {
+  stage('DAST Scan (OWASP ZAP)') {
+        steps {
+            container('kubectl') {
+                sh '''
+                    set +e
 
-    steps {
+                    echo "=========================================="
+                    echo "Running Al Ahly Momkn - DevOps DAST Scan"
+                    echo "Target: ${APP_URL}"
+                    echo "=========================================="
 
-        container('kubectl') {
+                    kubectl delete pod zap-scan-${BUILD_NUMBER} \
+                        -n jenkins \
+                        --ignore-not-found=true
 
-            sh '''
-                set +e
-
-                echo "=========================================="
-                echo "Running OWASP ZAP Baseline Scan"
-                echo "Target: ${APP_URL}"
-                echo "=========================================="
-
-                # Remove any leftover ZAP pod
-                kubectl delete pod zap-scan-${BUILD_NUMBER} \
-                    -n jenkins \
-                    --ignore-not-found=true
-
-                # Create ZAP scan pod
-                cat <<EOF | kubectl apply -f -
+                    cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -238,70 +233,57 @@ metadata:
   namespace: jenkins
 spec:
   restartPolicy: Never
-
   containers:
   - name: zap
     image: ghcr.io/zaproxy/zaproxy:stable
-
     command:
     - /bin/bash
     - -c
-
     args:
     - |
       zap-baseline.py \
         -t "${APP_URL}" \
         -r /zap/wrk/zap-report.html
+    volumeMounts:
+    - name: zap-wrk
+      mountPath: /zap/wrk
+  volumes:
+  - name: zap-wrk
+    emptyDir: {}
 EOF
 
-                echo "ZAP pod created."
+                    echo "ZAP pod created."
+                    echo "Waiting for ZAP pod to start..."
 
-                # Wait until Kubernetes schedules and starts the pod
-                echo "Waiting for ZAP pod to start..."
+                    for i in $(seq 1 60); do
+                        PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
+                            -n jenkins \
+                            -o jsonpath='{.status.phase}' \
+                            2>/dev/null)
 
-                for i in $(seq 1 60); do
+                        echo "ZAP Pod status: ${PHASE}"
 
-                    PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
-                        -n jenkins \
-                        -o jsonpath='{.status.phase}' \
-                        2>/dev/null)
+                        if [ "${PHASE}" = "Running" ]; then
+                            echo "ZAP container is running."
+                            break
+                        fi
 
-                    echo "ZAP Pod status: ${PHASE}"
+                        if [ "${PHASE}" = "Succeeded" ]; then
+                            echo "ZAP scan completed."
+                            break
+                        fi
 
-                    if [ "${PHASE}" = "Running" ]; then
-                        echo "ZAP container is running."
-                        break
-                    fi
+                        if [ "${PHASE}" = "Failed" ]; then
+                            echo "ZAP pod failed before scan."
+                            break
+                        fi
 
-                    if [ "${PHASE}" = "Succeeded" ]; then
-                        echo "ZAP scan completed."
-                        break
-                    fi
-
-                    if [ "${PHASE}" = "Failed" ]; then
-                        echo "ZAP pod failed."
-                        kubectl describe pod zap-scan-${BUILD_NUMBER} -n jenkins
-                        break
-                    fi
-
-                    sleep 5
-                done
-
-                # Check final pod phase
-                PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
-                    -n jenkins \
-                    -o jsonpath='{.status.phase}' \
-                    2>/dev/null)
-
-                echo "Final ZAP pod phase: ${PHASE}"
-
-                # Give ZAP a chance to finish if it is still running
-                if [ "${PHASE}" = "Running" ]; then
+                        sleep 5
+                    done
 
                     echo "Waiting for ZAP scan to complete..."
 
-                    for i in $(seq 1 60); do
-
+                    for i in $(seq 1 120); do
                         PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
                             -n jenkins \
                             -o jsonpath='{.status.phase}' \
@@ -315,50 +297,64 @@ EOF
 
                         sleep 5
                     done
-                fi
 
-                echo "=========================================="
-                echo "ZAP Scan Logs"
-                echo "=========================================="
+                    echo "=========================================="
+                    echo "ZAP Scan Logs"
+                    echo "=========================================="
 
-                kubectl logs zap-scan-${BUILD_NUMBER} \
-                    -n jenkins \
-                    --ignore-errors=true || true
+                    kubectl logs zap-scan-${BUILD_NUMBER} \
+                        -n jenkins \
+                        --ignore-errors=true || true
 
-                echo "=========================================="
-                echo "Copying ZAP Report"
-                echo "=========================================="
+                    echo "=========================================="
+                    echo "Copying ZAP Report"
+                    echo "=========================================="
 
-                # Copy report if it exists
-                kubectl cp \
-                    jenkins/zap-scan-${BUILD_NUMBER}:/zap/wrk/zap-report.html \
-                    ./zap-report.html \
-                    -c zap || true
+                    kubectl cp \
+                        jenkins/zap-scan-${BUILD_NUMBER}:/zap/wrk/zap-report.html \
+                        ./zap-report.html \
+                        -c zap || true
 
-                # Show whether report exists
-                if [ -f ./zap-report.html ]; then
-                    echo "ZAP report successfully copied."
-                    ls -lh ./zap-report.html
-                else
-                    echo "WARNING: ZAP report was not generated."
-                fi
+                    if [ -f ./zap-report.html ]; then
+                        echo "ZAP report successfully copied."
+                        ls -lh ./zap-report.html
 
-                echo "=========================================="
-                echo "Cleaning up ZAP Pod"
-                echo "=========================================="
+                        # ==========================================
+                        # Al Ahly Momkn & DevOps Custom Branding
+                        # ==========================================
+                        echo "Applying Al Ahly Momkn Brand Styling..."
+                        
+                        sed -i 's|<title>ZAP Scanning Report</title>|<title>Al Ahly Momkn - DevOps Security DAST Report</title>|g' ./zap-report.html
+                        sed -i 's/ZAP Scanning Report/Al Ahly Momkn - DevOps DAST Report/g' ./zap-report.html
 
-                kubectl delete pod zap-scan-${BUILD_NUMBER} \
-                    -n jenkins \
-                    --ignore-not-found=true
+                        sed -i 's|</head>|<style> \
+                            body { background-color: #f4f6f7; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; } \
+                            .report-header, header, .navbar { background: #007663 !important; color: #ffffff !important; padding: 20px; border-radius: 6px; } \
+                            h1, h2, h3, th { color: #007663 !important; } \
+                            .card, .panel { border-top: 4px solid #f47b20 !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1); } \
+                            .badge, .label-warning { background-color: #f47b20 !important; color: #ffffff !important; } \
+                        </style></head>|g' ./zap-report.html
 
-                echo "ZAP scan stage completed."
+                        echo "ZAP report branded successfully."
+                    else
+                        echo "WARNING: ZAP report was not generated."
+                    fi
 
-                # DAST findings do not fail the pipeline
-                exit 0
-            '''
+                    echo "=========================================="
+                    echo "Cleaning up ZAP Pod"
+                    echo "=========================================="
+
+                    kubectl delete pod zap-scan-${BUILD_NUMBER} \
+                        -n jenkins \
+                        --ignore-not-found=true
+
+                    echo "ZAP scan stage completed."
+                    exit 0
+                '''
+            }
+
+            archiveArtifacts artifacts: 'zap-report.html', fingerprint: true, allowEmptyArchive: true
         }
-    }
-}
     }
 
     post {
