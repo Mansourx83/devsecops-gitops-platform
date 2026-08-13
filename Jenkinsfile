@@ -62,7 +62,7 @@ spec:
         IMAGE_TAG   = "${env.BUILD_NUMBER}"
         SONAR_HOST  = 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000'
         NEXUS_URL   = 'http://nexus-nexus-repository-manager.nexus.svc.cluster.local:8081'
-        APP_URL = 'http://spring-boot-app-service.apps.svc.cluster.local:80'
+        APP_URL     = 'http://spring-boot-app-service.apps.svc.cluster.local:80'
     }
 
     options {
@@ -78,7 +78,6 @@ spec:
             }
         }
 
-        // Check code quality/security first, before building any artifact or image
         stage('Static Code Analysis (SonarQube)') {
             steps {
                 container('maven') {
@@ -96,7 +95,6 @@ spec:
             }
         }
 
-        // Once the code passes quality checks, publish the artifact to Nexus
         stage('Build and Deploy to Nexus') {
             steps {
                 container('maven') {
@@ -127,7 +125,6 @@ EOF
             }
         }
 
-        // Build the Docker image now that the artifact is ready
         stage('Build & Push Image (Kaniko)') {
             steps {
                 container('kaniko') {
@@ -155,7 +152,6 @@ EOF
             }
         }
 
-        // Scan the image itself right after it's built
         stage('Security Scan (Syft & Grype)') {
             steps {
                 container('syft-grype') {
@@ -178,54 +174,52 @@ EOF
             }
         }
 
-        // GitOps Update: Push new image tag to the manifests repository for Argo CD to sync
-       stage('GitOps Update Manifests') {
-    steps {
-        container('kubectl') {
-            withCredentials([usernamePassword(credentialsId: 'github-cred',
-                passwordVariable: 'GH_PASSWORD',
-                usernameVariable: 'GH_USER')]) {
-                sh """
-                    rm -rf /tmp/manifests
-                    git clone https://\${GH_USER}:\${GH_PASSWORD}@github.com/Mansourx83/gitops-manifests.git /tmp/manifests
-                    cd /tmp/manifests
+        stage('GitOps Update Manifests') {
+            steps {
+                container('kubectl') {
+                    withCredentials([usernamePassword(credentialsId: 'github-cred',
+                        passwordVariable: 'GH_PASSWORD',
+                        usernameVariable: 'GH_USER')]) {
+                        sh """
+                            rm -rf /tmp/manifests
+                            git clone https://\${GH_USER}:\${GH_PASSWORD}@github.com/Mansourx83/gitops-manifests.git /tmp/manifests
+                            cd /tmp/manifests
 
-                    sed -i "s|image: mansour19/spring-boot-demo:.*|image: mansour19/spring-boot-demo:${BUILD_NUMBER}|" spring-boot/deployment.yaml
+                            sed -i "s|image: mansour19/spring-boot-demo:.*|image: mansour19/spring-boot-demo:${BUILD_NUMBER}|" spring-boot/deployment.yaml
 
-                    git config user.email "jenkins@ci-cd.local"
-                    git config user.name "Jenkins CI"
-                    git add spring-boot/deployment.yaml
+                            git config user.email "jenkins@ci-cd.local"
+                            git config user.name "Jenkins CI"
+                            git add spring-boot/deployment.yaml
 
-                    if git diff --cached --quiet; then
-                        echo "No changes to commit"
-                    else
-                        git commit -m "chore: update spring-boot image tag to ${BUILD_NUMBER}"
-                        git push origin main
-                        echo "Successfully pushed!"
-                    fi
-                """
+                            if git diff --cached --quiet; then
+                                echo "No changes to commit"
+                            else
+                                git commit -m "chore: update spring-boot image tag to ${BUILD_NUMBER}"
+                                git push origin main
+                                echo "Successfully pushed!"
+                            fi
+                        """
+                    }
+                }
             }
         }
-    }
-} 
 
-        // Final step: scan the application itself while it's actually running in the cluster
-  stage('DAST Scan (OWASP ZAP)') {
-        steps {
-            container('kubectl') {
-                sh '''
-                    set +e
+        stage('DAST Scan (OWASP ZAP)') {
+            steps {
+                container('kubectl') {
+                    sh '''
+                        set +e
 
-                    echo "=========================================="
-                    echo "Running Al Ahly Momkn - DevOps DAST Scan"
-                    echo "Target: ${APP_URL}"
-                    echo "=========================================="
+                        echo "=========================================="
+                        echo "Running Al Ahly Momkn - DevOps DAST Scan"
+                        echo "Target: ${APP_URL}"
+                        echo "=========================================="
 
-                    kubectl delete pod zap-scan-${BUILD_NUMBER} \
-                        -n jenkins \
-                        --ignore-not-found=true
+                        kubectl delete pod zap-scan-${BUILD_NUMBER} \
+                            -n jenkins \
+                            --ignore-not-found=true
 
-                    cat <<EOF | kubectl apply -f -
+                        cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -252,109 +246,111 @@ spec:
     emptyDir: {}
 EOF
 
-                    echo "ZAP pod created."
-                    echo "Waiting for ZAP pod to start..."
+                        echo "ZAP pod created."
+                        echo "Waiting for ZAP pod to start..."
 
-                    for i in $(seq 1 60); do
-                        PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
+                        for i in $(seq 1 60); do
+                            PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
+                                -n jenkins \
+                                -o jsonpath='{.status.phase}' \
+                                2>/dev/null)
+
+                            echo "ZAP Pod status: ${PHASE}"
+
+                            if [ "${PHASE}" = "Running" ]; then
+                                echo "ZAP container is running."
+                                break
+                            fi
+
+                            if [ "${PHASE}" = "Succeeded" ]; then
+                                echo "ZAP scan completed."
+                                break
+                            fi
+
+                            if [ "${PHASE}" = "Failed" ]; then
+                                echo "ZAP pod failed before scan."
+                                break
+                            fi
+
+                            sleep 5
+                        done
+
+                        echo "Waiting for ZAP scan to complete..."
+
+                        for i in $(seq 1 120); do
+                            PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
+                                -n jenkins \
+                                -o jsonpath='{.status.phase}' \
+                                2>/dev/null)
+
+                            echo "ZAP scan status: ${PHASE}"
+
+                            if [ "${PHASE}" = "Succeeded" ] || [ "${PHASE}" = "Failed" ]; then
+                                break
+                            fi
+
+                            sleep 5
+                        done
+
+                        echo "=========================================="
+                        echo "ZAP Scan Logs"
+                        echo "=========================================="
+
+                        kubectl logs zap-scan-${BUILD_NUMBER} \
                             -n jenkins \
-                            -o jsonpath='{.status.phase}' \
-                            2>/dev/null)
+                            --ignore-errors=true || true
 
-                        echo "ZAP Pod status: ${PHASE}"
+                        echo "=========================================="
+                        echo "Copying ZAP Report"
+                        echo "=========================================="
 
-                        if [ "${PHASE}" = "Running" ]; then
-                            echo "ZAP container is running."
-                            break
+                        kubectl cp \
+                            jenkins/zap-scan-${BUILD_NUMBER}:/zap/wrk/zap-report.html \
+                            ./zap-report.html \
+                            -c zap || true
+
+                        if [ -f ./zap-report.html ]; then
+                            echo "ZAP report successfully copied."
+                            ls -lh ./zap-report.html
+
+                            # ==========================================
+                            # Al Ahly Momkn & DevOps Custom Branding
+                            # ==========================================
+                            echo "Applying Al Ahly Momkn Brand Styling..."
+                            
+                            sed -i 's|<title>ZAP Scanning Report</title>|<title>Al Ahly Momkn - DevOps Security DAST Report</title>|g' ./zap-report.html
+                            sed -i 's/ZAP Scanning Report/Al Ahly Momkn - DevOps DAST Report/g' ./zap-report.html
+
+                            sed -i 's|</head>|<style> \
+                                body { background-color: #f4f6f7; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; } \
+                                .report-header, header, .navbar { background: #007663 !important; color: #ffffff !important; padding: 20px; border-radius: 6px; } \
+                                h1, h2, h3, th { color: #007663 !important; } \
+                                .card, .panel { border-top: 4px solid #f47b20 !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1); } \
+                                .badge, .label-warning { background-color: #f47b20 !important; color: #ffffff !important; } \
+                            </style></head>|g' ./zap-report.html
+
+                            echo "ZAP report branded successfully."
+                        else
+                            echo "WARNING: ZAP report was not generated."
                         fi
 
-                        if [ "${PHASE}" = "Succeeded" ]; then
-                            echo "ZAP scan completed."
-                            break
-                        fi
+                        echo "=========================================="
+                        echo "Cleaning up ZAP Pod"
+                        echo "=========================================="
 
-                        if [ "${PHASE}" = "Failed" ]; then
-                            echo "ZAP pod failed before scan."
-                            break
-                        fi
-
-                        sleep 5
-                    done
-
-                    echo "Waiting for ZAP scan to complete..."
-
-                    for i in $(seq 1 120); do
-                        PHASE=$(kubectl get pod zap-scan-${BUILD_NUMBER} \
+                        kubectl delete pod zap-scan-${BUILD_NUMBER} \
                             -n jenkins \
-                            -o jsonpath='{.status.phase}' \
-                            2>/dev/null)
+                            --ignore-not-found=true
 
-                        echo "ZAP scan status: ${PHASE}"
+                        echo "ZAP scan stage completed."
+                        exit 0
+                    '''
+                }
 
-                        if [ "${PHASE}" = "Succeeded" ] || [ "${PHASE}" = "Failed" ]; then
-                            break
-                        fi
-
-                        sleep 5
-                    done
-
-                    echo "=========================================="
-                    echo "ZAP Scan Logs"
-                    echo "=========================================="
-
-                    kubectl logs zap-scan-${BUILD_NUMBER} \
-                        -n jenkins \
-                        --ignore-errors=true || true
-
-                    echo "=========================================="
-                    echo "Copying ZAP Report"
-                    echo "=========================================="
-
-                    kubectl cp \
-                        jenkins/zap-scan-${BUILD_NUMBER}:/zap/wrk/zap-report.html \
-                        ./zap-report.html \
-                        -c zap || true
-
-                    if [ -f ./zap-report.html ]; then
-                        echo "ZAP report successfully copied."
-                        ls -lh ./zap-report.html
-
-                        # ==========================================
-                        # Al Ahly Momkn & DevOps Custom Branding
-                        # ==========================================
-                        echo "Applying Al Ahly Momkn Brand Styling..."
-                        
-                        sed -i 's|<title>ZAP Scanning Report</title>|<title>Al Ahly Momkn - DevOps Security DAST Report</title>|g' ./zap-report.html
-                        sed -i 's/ZAP Scanning Report/Al Ahly Momkn - DevOps DAST Report/g' ./zap-report.html
-
-                        sed -i 's|</head>|<style> \
-                            body { background-color: #f4f6f7; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; } \
-                            .report-header, header, .navbar { background: #007663 !important; color: #ffffff !important; padding: 20px; border-radius: 6px; } \
-                            h1, h2, h3, th { color: #007663 !important; } \
-                            .card, .panel { border-top: 4px solid #f47b20 !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1); } \
-                            .badge, .label-warning { background-color: #f47b20 !important; color: #ffffff !important; } \
-                        </style></head>|g' ./zap-report.html
-
-                        echo "ZAP report branded successfully."
-                    else
-                        echo "WARNING: ZAP report was not generated."
-                    fi
-
-                    echo "=========================================="
-                    echo "Cleaning up ZAP Pod"
-                    echo "=========================================="
-
-                    kubectl delete pod zap-scan-${BUILD_NUMBER} \
-                        -n jenkins \
-                        --ignore-not-found=true
-
-                    echo "ZAP scan stage completed."
-                    exit 0
-                '''
+                archiveArtifacts artifacts: 'zap-report.html', fingerprint: true, allowEmptyArchive: true
             }
-
-            archiveArtifacts artifacts: 'zap-report.html', fingerprint: true, allowEmptyArchive: true
         }
+
     }
 
     post {
