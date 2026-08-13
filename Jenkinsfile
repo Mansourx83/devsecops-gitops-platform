@@ -165,27 +165,32 @@ EOF
         }
 
         // GitOps Update: Push new image tag to the manifests repository for Argo CD to sync
-        stage('GitOps Update Manifests') {
+       stage('GitOps Update Manifests') {
     steps {
-        script {
-            echo "Updating deployment.yaml with new image tag..."
-            sh '''
-            cd /tmp/manifests
-            
-            # Navigate to spring-boot folder and update
-            sed -i "s|image: mansour19/spring-boot-demo:.*|image: mansour19/spring-boot-demo:${BUILD_NUMBER}|" spring-boot/deployment.yaml
-            
-            # Verify the change
-            echo "=== Updated deployment.yaml ==="
-            cat spring-boot/deployment.yaml
-            
-            # Commit and push
-            git config user.email "jenkins@ci-cd.local"
-            git config user.name "Jenkins CI"
-            git add spring-boot/deployment.yaml
-            git commit -m "chore: update spring-boot image tag to ${BUILD_NUMBER}"
-            git push origin main
-            '''
+        container('kubectl') {
+            withCredentials([usernamePassword(credentialsId: 'github-cred',
+                passwordVariable: 'GH_PASSWORD',
+                usernameVariable: 'GH_USER')]) {
+                sh """
+                    rm -rf /tmp/manifests
+                    git clone https://\${GH_USER}:\${GH_PASSWORD}@github.com/Mansourx83/gitops-manifests.git /tmp/manifests
+                    cd /tmp/manifests
+
+                    sed -i "s|image: mansour19/spring-boot-demo:.*|image: mansour19/spring-boot-demo:${BUILD_NUMBER}|" spring-boot/deployment.yaml
+
+                    git config user.email "jenkins@ci-cd.local"
+                    git config user.name "Jenkins CI"
+                    git add spring-boot/deployment.yaml
+
+                    if git diff --cached --quiet; then
+                        echo "No changes to commit"
+                    else
+                        git commit -m "chore: update spring-boot image tag to ${BUILD_NUMBER}"
+                        git push origin main
+                        echo "Successfully pushed!"
+                    fi
+                """
+            }
         }
     }
 }
