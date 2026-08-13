@@ -62,7 +62,7 @@ spec:
         IMAGE_TAG   = "${env.BUILD_NUMBER}"
         SONAR_HOST  = 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000'
         NEXUS_URL   = 'http://nexus-nexus-repository-manager.nexus.svc.cluster.local:8081'
-        APP_URL     = 'http://spring-boot-app-service.jenkins.svc.cluster.local:80'
+        APP_URL = 'http://spring-boot-app-service.apps.svc.cluster.local:80'
     }
 
     options {
