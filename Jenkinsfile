@@ -193,7 +193,7 @@ EOF
             }
         }
     }
-}
+} 
 
         // Final step: scan the application itself while it's actually running in the cluster
         stage('DAST Scan (OWASP ZAP)') {
