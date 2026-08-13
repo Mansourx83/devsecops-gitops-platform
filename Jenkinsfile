@@ -16,6 +16,9 @@ spec:
     image: maven:3.8.4-openjdk-17
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: maven-cache
+      mountPath: /root/.m2
 
   - name: kaniko
     image: gcr.io/kaniko-project/executor:v1.23.2-debug
@@ -35,8 +38,19 @@ spec:
     image: mansour19/syft-grype:latest
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: grype-cache
+      mountPath: /root/.cache/grype
 
   volumes:
+  - name: maven-cache
+    persistentVolumeClaim:
+      claimName: maven-cache-pvc
+
+  - name: grype-cache
+    persistentVolumeClaim:
+      claimName: grype-cache-pvc
+
   - name: docker-config
     emptyDir: {}
 '''
