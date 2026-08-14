@@ -114,8 +114,8 @@ spec:
                 container('maven') {
                     dir('spring-boot-app') {
                         withCredentials([usernamePassword(credentialsId: 'nexus-cred',
-                                passwordVariable: 'NEXUS_PASSWORD',
-                                usernameVariable: 'NEXUS_USER')]) {
+                                    passwordVariable: 'NEXUS_PASSWORD',
+                                    usernameVariable: 'NEXUS_USER')]) {
                             sh '''
                                 cat > nexus-settings.xml <<EOF
 <settings>
@@ -238,17 +238,16 @@ EOF
 
                         # FIX: zap-baseline.py prepends /zap/wrk/ automatically
                         # so pass filename only — NOT the full path
-                        zap-baseline.py \\
-                            -t "${APP_URL}" \\
-                            -r zap-report-raw.html \\
+                        zap-baseline.py \
+                            -t "${APP_URL}" \
+                            -r zap-report-raw.html \
                             -I || true
 
                         echo "Scan complete — report size: \$(wc -c < /zap/wrk/zap-report-raw.html) bytes"
 
-                        # Apply Al Ahly Momkn branding using Python3 (available in ZAP image)
-                        # brand_zap_report.py is checked into the repo root
-                        python3 \${WORKSPACE}/brand_zap_report.py \\
-                            /zap/wrk/zap-report-raw.html \\
+                        # Apply branding using Python3 (available in ZAP image)
+                        python3 \${WORKSPACE}/brand_zap_report.py \
+                            /zap/wrk/zap-report-raw.html \
                             \${WORKSPACE}/zap-report.html
 
                         echo "Branded report: \$(ls -lh \${WORKSPACE}/zap-report.html)"
@@ -259,19 +258,19 @@ EOF
             post {
                 always {
                     archiveArtifacts artifacts: 'zap-report.html',
-                                     fingerprint:       true,
-                                     allowEmptyArchive: true
+                                       fingerprint:        true,
+                                       allowEmptyArchive: true
                 }
             }
         }
-        # ═══════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════
 
     }
 
     post {
         always {
             archiveArtifacts artifacts: 'sbom.json, grype-report.json, zap-report.html',
-                             allowEmptyArchive: true
+                                     allowEmptyArchive: true
         }
         success {
             echo "✅ Pipeline succeeded: ${IMAGE_NAME}:${IMAGE_TAG}"
