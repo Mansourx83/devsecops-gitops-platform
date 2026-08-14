@@ -42,6 +42,17 @@ spec:
     - name: grype-cache
       mountPath: /root/.cache/grype
 
+  - name: zap
+    image: ghcr.io/zaproxy/zaproxy:stable
+    command: ['sleep']
+    args: ['3600']
+    resources:
+      limits:
+        memory: "1Gi"
+    volumeMounts:
+    - name: zap-wrk
+      mountPath: /zap/wrk
+
   volumes:
   - name: maven-cache
     persistentVolumeClaim:
@@ -51,6 +62,8 @@ spec:
     persistentVolumeClaim:
       claimName: grype-cache-pvc
 
+  - name: zap-wrk
+    emptyDir: {}
   - name: docker-config
     emptyDir: {}
 '''
@@ -203,86 +216,25 @@ EOF
                 }
             }
         }
+// ============================================================
+// STEP 1 —Add ZAP container to your Jenkins agent pod spec
+// ============================================================
 
-       stage('DAST Scan (OWASP ZAP)') {
+stage('DAST Scan (OWASP ZAP)') {
     steps {
-        container('kubectl') {
-            sh '''
-                set +e
-                echo "=========================================="
-                echo "Running OWASP ZAP DAST Scan"
-                echo "Target: ${APP_URL}"
-                echo "=========================================="
+container('zap') {
+    sh "zap-baseline.py -t ${APP_URL} -r /zap/wrk/zap-report-raw.html -I || true"
+}
+container('jnlp') {
+    sh "python3 brand_zap_report.py /zap/wrk/zap-report-raw.html ./zap-report.html"
+}
+    }
 
-                kubectl delete pod zap-scan-${BUILD_NUMBER} -n jenkins --ignore-not-found=true
-
-                cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: zap-scan-${BUILD_NUMBER}
-  namespace: jenkins
-spec:
-  restartPolicy: Never
-  containers:
-  - name: zap
-    image: ghcr.io/zaproxy/zaproxy:stable
-    command: ["/bin/bash", "-c"]
-    args:
-      - "zap-baseline.py -t ${APP_URL} -r /zap/wrk/zap-report.html; echo DONE > /zap/wrk/scan-complete; sleep 300"
-    volumeMounts:
-    - name: zap-wrk
-      mountPath: /zap/wrk
-  volumes:
-  - name: zap-wrk
-    emptyDir: {}
-EOF
-
-                echo "Waiting for ZAP scan to finish (max 5 minutes)..."
-                for i in $(seq 1 60); do
-                    MARKER=$(kubectl exec zap-scan-${BUILD_NUMBER} -n jenkins -- test -f /zap/wrk/scan-complete 2>/dev/null && echo yes || echo no)
-                    echo "Scan complete marker: $MARKER"
-                    if [ "$MARKER" = "yes" ]; then
-                        break
-                    fi
-                    sleep 5
-                done
-
-                echo "===== ZAP Logs ====="
-                kubectl logs zap-scan-${BUILD_NUMBER} -n jenkins || true
-
-                echo "Copying ZAP report..."
-                kubectl cp jenkins/zap-scan-${BUILD_NUMBER}:/zap/wrk/zap-report.html ./zap-report.html -c zap || true
-
-                kubectl delete pod zap-scan-${BUILD_NUMBER} -n jenkins --ignore-not-found=true
-
-                # ==========================================
-                # Apply Al Ahly Momkn Branding
-                # ==========================================
-                if [ -f ./zap-report.html ]; then
-                    echo "Applying branding..."
-
-                    sed -i 's|<title>ZAP Scanning Report</title>|<title>Al Ahly Momkn - DevOps Security DAST Report</title>|g' ./zap-report.html
-                    sed -i 's/ZAP Scanning Report/Al Ahly Momkn - DevOps DAST Report/g' ./zap-report.html
-
-                    sed -i 's|</head>|<style>\
-body { background-color: #f4f6f7; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }\
-.report-header, header, .navbar { background: #007663 !important; color: #ffffff !important; padding: 20px; border-radius: 6px; }\
-h1, h2, h3, th { color: #007663 !important; }\
-.card, .panel { border-top: 4px solid #f47b20 !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }\
-.badge, .label-warning { background-color: #f47b20 !important; color: #ffffff !important; }\
-</style></head>|g' ./zap-report.html
-
-                    echo "Branding applied successfully."
-                    ls -lh ./zap-report.html
-                else
-                    echo "WARNING: ZAP report was not generated."
-                fi
-
-                echo "ZAP scan stage completed."
-                exit 0
-            '''
-            archiveArtifacts artifacts: 'zap-report.html', fingerprint: true, allowEmptyArchive: true
+    post {
+        always {
+            archiveArtifacts artifacts: 'zap-report.html',
+                             fingerprint:      true,
+                             allowEmptyArchive: true
         }
     }
 }
