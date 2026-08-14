@@ -46,9 +46,9 @@ spec:
     tty: true
     resources:
       requests:
-        memory: "512Mi"
-      limits:
         memory: "1Gi"
+      limits:
+        memory: "2Gi"
     volumeMounts:
     - name: zap-wrk
       mountPath: /zap/wrk
