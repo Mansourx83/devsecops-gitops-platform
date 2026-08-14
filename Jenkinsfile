@@ -11,7 +11,6 @@ spec:
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:latest
-
   - name: maven
     image: maven:3.8.4-openjdk-17
     command: ['cat']
@@ -19,7 +18,6 @@ spec:
     volumeMounts:
     - name: maven-cache
       mountPath: /root/.m2
-
   - name: kaniko
     image: gcr.io/kaniko-project/executor:v1.23.2-debug
     command: ['sleep']
@@ -28,12 +26,10 @@ spec:
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
-
   - name: kubectl
     image: alpine/k8s:1.29.2
     command: ['sh', '-c', 'while true; do sleep 30; done']
     tty: true
-
   - name: syft-grype
     image: mansour19/syft-grype:latest
     command: ['cat']
@@ -42,40 +38,45 @@ spec:
     - name: grype-cache
       mountPath: /root/.cache/grype
 
+  # ── ✅ ADDED: ZAP sidecar ─────────────────────────────────────
   - name: zap
     image: ghcr.io/zaproxy/zaproxy:stable
     command: ['sleep']
     args: ['3600']
+    tty: true
     resources:
+      requests:
+        memory: "512Mi"
       limits:
         memory: "1Gi"
     volumeMounts:
     - name: zap-wrk
       mountPath: /zap/wrk
+  # ─────────────────────────────────────────────────────────────
 
   volumes:
   - name: maven-cache
     persistentVolumeClaim:
       claimName: maven-cache-pvc
-
   - name: grype-cache
     persistentVolumeClaim:
       claimName: grype-cache-pvc
-
-  - name: zap-wrk
-    emptyDir: {}
   - name: docker-config
     emptyDir: {}
+  # ── ✅ ADDED: shared ZAP work directory ──────────────────────
+  - name: zap-wrk
+    emptyDir: {}
+  # ─────────────────────────────────────────────────────────────
 '''
         }
     }
 
     environment {
-        IMAGE_NAME  = 'mansour19/spring-boot-demo'
-        IMAGE_TAG   = "${env.BUILD_NUMBER}"
-        SONAR_HOST  = 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000'
-        NEXUS_URL   = 'http://nexus-nexus-repository-manager.nexus.svc.cluster.local:8081'
-        APP_URL     = 'http://spring-boot-app-service.apps.svc.cluster.local:80'
+        IMAGE_NAME = 'mansour19/spring-boot-demo'
+        IMAGE_TAG  = "${env.BUILD_NUMBER}"
+        SONAR_HOST = 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000'
+        NEXUS_URL  = 'http://nexus-nexus-repository-manager.nexus.svc.cluster.local:8081'
+        APP_URL    = 'http://spring-boot-app-service.apps.svc.cluster.local:80'
     }
 
     options {
@@ -98,9 +99,9 @@ spec:
                         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
                             sh """
                                 mvn sonar:sonar \
-                                  -Dsonar.projectKey=spring-boot-demo \
-                                  -Dsonar.host.url=${SONAR_HOST} \
-                                  -Dsonar.login=\$SONAR_TOKEN
+                                    -Dsonar.projectKey=spring-boot-demo \
+                                    -Dsonar.host.url=${SONAR_HOST} \
+                                    -Dsonar.login=\$SONAR_TOKEN
                             """
                         }
                     }
@@ -112,7 +113,9 @@ spec:
             steps {
                 container('maven') {
                     dir('spring-boot-app') {
-                        withCredentials([usernamePassword(credentialsId: 'nexus-cred', passwordVariable: 'NEXUS_PASSWORD', usernameVariable: 'NEXUS_USER')]) {
+                        withCredentials([usernamePassword(credentialsId: 'nexus-cred',
+                                passwordVariable: 'NEXUS_PASSWORD',
+                                usernameVariable: 'NEXUS_USER')]) {
                             sh '''
                                 cat > nexus-settings.xml <<EOF
 <settings>
@@ -141,7 +144,9 @@ EOF
         stage('Build & Push Image (Kaniko)') {
             steps {
                 container('kaniko') {
-                    withCredentials([usernamePassword(credentialsId: 'docker-cred', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USER')]) {
+                    withCredentials([usernamePassword(credentialsId: 'docker-cred',
+                            passwordVariable: 'DOCKER_PASSWORD',
+                            usernameVariable: 'DOCKER_USER')]) {
                         sh '''
                             AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASSWORD" | base64 | tr -d '\\n')
                             cat > /kaniko/.docker/config.json <<EOF
@@ -154,11 +159,11 @@ EOF
 }
 EOF
                             /kaniko/executor \
-                              --context "$(pwd)/spring-boot-app" \
-                              --dockerfile "$(pwd)/spring-boot-app/Dockerfile" \
-                              --destination "${IMAGE_NAME}:${IMAGE_TAG}" \
-                              --destination "${IMAGE_NAME}:latest" \
-                              --cache=true
+                                --context    "$(pwd)/spring-boot-app" \
+                                --dockerfile "$(pwd)/spring-boot-app/Dockerfile" \
+                                --destination "${IMAGE_NAME}:${IMAGE_TAG}" \
+                                --destination "${IMAGE_NAME}:latest" \
+                                --cache=true
                         '''
                     }
                 }
@@ -170,13 +175,13 @@ EOF
                 container('syft-grype') {
                     sh '''
                         syft "${IMAGE_NAME}:${IMAGE_TAG}" \
-                          --scope all-layers \
-                          -o json > sbom.json
+                            --scope all-layers \
+                            -o json > sbom.json
 
                         echo "===== Syft SBOM ====="
                         syft "${IMAGE_NAME}:${IMAGE_TAG}" \
-                          --scope all-layers \
-                          -o table
+                            --scope all-layers \
+                            -o table
 
                         grype "${IMAGE_NAME}:${IMAGE_TAG}" -o json > grype-report.json
 
@@ -191,8 +196,8 @@ EOF
             steps {
                 container('kubectl') {
                     withCredentials([usernamePassword(credentialsId: 'github-cred',
-                        passwordVariable: 'GH_PASSWORD',
-                        usernameVariable: 'GH_USER')]) {
+                            passwordVariable: 'GH_PASSWORD',
+                            usernameVariable: 'GH_USER')]) {
                         sh """
                             rm -rf /tmp/manifests
                             git clone https://\${GH_USER}:\${GH_PASSWORD}@github.com/Mansourx83/gitops-manifests.git /tmp/manifests
@@ -201,7 +206,7 @@ EOF
                             sed -i "s|image: mansour19/spring-boot-demo:.*|image: mansour19/spring-boot-demo:${BUILD_NUMBER}|" spring-boot/deployment.yaml
 
                             git config user.email "jenkins@ci-cd.local"
-                            git config user.name "Jenkins CI"
+                            git config user.name  "Jenkins CI"
                             git add spring-boot/deployment.yaml
 
                             if git diff --cached --quiet; then
@@ -216,40 +221,63 @@ EOF
                 }
             }
         }
-// ============================================================
-// STEP 1 —Add ZAP container to your Jenkins agent pod spec
-// ============================================================
 
-stage('DAST Scan (OWASP ZAP)') {
-    steps {
-container('zap') {
-    sh "zap-baseline.py -t ${APP_URL} -r /zap/wrk/zap-report-raw.html -I || true"
-}
-container('jnlp') {
-    sh "python3 brand_zap_report.py /zap/wrk/zap-report-raw.html ./zap-report.html"
-}
+        // ═══════════════════════════════════════════════════════════
+        // ZAP runs as sidecar — shared emptyDir volume at /zap/wrk
+        // Both scan + branding happen inside the zap container
+        // because Python3 is available there (jnlp has none)
+        // ═══════════════════════════════════════════════════════════
+        stage('DAST Scan (OWASP ZAP)') {
+            steps {
+                container('zap') {
+                    sh """
+                        echo "=========================================="
+                        echo "  OWASP ZAP Baseline Scan"
+                        echo "  Target: ${APP_URL}"
+                        echo "=========================================="
+
+                        # FIX: zap-baseline.py prepends /zap/wrk/ automatically
+                        # so pass filename only — NOT the full path
+                        zap-baseline.py \\
+                            -t "${APP_URL}" \\
+                            -r zap-report-raw.html \\
+                            -I || true
+
+                        echo "Scan complete — report size: \$(wc -c < /zap/wrk/zap-report-raw.html) bytes"
+
+                        # Apply Al Ahly Momkn branding using Python3 (available in ZAP image)
+                        # brand_zap_report.py is checked into the repo root
+                        python3 \${WORKSPACE}/brand_zap_report.py \\
+                            /zap/wrk/zap-report-raw.html \\
+                            \${WORKSPACE}/zap-report.html
+
+                        echo "Branded report: \$(ls -lh \${WORKSPACE}/zap-report.html)"
+                    """
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts artifacts: 'zap-report.html',
+                                     fingerprint:       true,
+                                     allowEmptyArchive: true
+                }
+            }
+        }
+        # ═══════════════════════════════════════════════════════════
+
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'zap-report.html',
-                             fingerprint:      true,
+            archiveArtifacts artifacts: 'sbom.json, grype-report.json, zap-report.html',
                              allowEmptyArchive: true
         }
-    }
-}
-
-    }
-
-    post {
-        always {
-            archiveArtifacts artifacts: 'sbom.json, grype-report.json, zap-report.html', allowEmptyArchive: true
-        }
         success {
-            echo "Pipeline succeeded: ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "✅ Pipeline succeeded: ${IMAGE_NAME}:${IMAGE_TAG}"
         }
         failure {
-            echo "Pipeline failed — check the logs above."
+            echo "❌ Pipeline failed — check the logs above."
         }
     }
 }
