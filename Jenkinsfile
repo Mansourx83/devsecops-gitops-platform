@@ -163,7 +163,7 @@ EOF
                                 --dockerfile "$(pwd)/spring-boot-app/Dockerfile" \
                                 --destination "${IMAGE_NAME}:${IMAGE_TAG}" \
                                 --destination "${IMAGE_NAME}:latest" \
-                                --cache=true
+                                --cache=true \
                                 --cache-repo="mansour19/spring-boot-demo-cache"
                         '''
                     }
