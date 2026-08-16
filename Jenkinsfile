@@ -164,6 +164,7 @@ EOF
                                 --destination "${IMAGE_NAME}:${IMAGE_TAG}" \
                                 --destination "${IMAGE_NAME}:latest" \
                                 --cache=true
+                                --cache-repo="mansour19/spring-boot-demo-cache"
                         '''
                     }
                 }
@@ -248,7 +249,8 @@ EOF
                         # Apply branding using Python3 (available in ZAP image)
                         python3 \${WORKSPACE}/brand_zap_report.py \
                             /zap/wrk/zap-report-raw.html \
-                            \${WORKSPACE}/zap-report.html
+                            \${WORKSPACE}/zap-report.html \
+                            \${WORKSPACE}/Logo.png
 
                         echo "Branded report: \$(ls -lh \${WORKSPACE}/zap-report.html)"
                     """
