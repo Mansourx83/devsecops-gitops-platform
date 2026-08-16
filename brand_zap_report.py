@@ -558,7 +558,7 @@ def build_hero(logo_uri: str, generated_at: str) -> str:
         </div>
 
         <div class="momkn-hero-info">
-            <div class="momkn-eyebrow">Security Engineering &amp; DevSecOps</div>
+            <div class="momkn-eyebrow">&amp; DevSecOps Team </div>
             <h1 class="momkn-hero-title">{REPORT_TITLE}</h1>
             <div class="momkn-hero-subtitle">{REPORT_SUBTITLE} using OWASP ZAP</div>
             <div class="momkn-pills">
@@ -601,22 +601,6 @@ def build_scan_strip(generated_at: str) -> str:
     <div class="momkn-scan-item">
         <div class="momkn-scan-label">Tool</div>
         <div class="momkn-scan-value">OWASP ZAP 2.x — Automated DAST</div>
-    </div>
-</div>
-"""
-
-
-def build_all_clear_banner() -> str:
-    return """
-<div class="momkn-all-clear">
-    <div class="momkn-all-clear-icon">✅</div>
-    <div>
-        <div class="momkn-all-clear-title">No Vulnerabilities Detected</div>
-        <div class="momkn-all-clear-desc">
-            The automated DAST scan completed successfully.
-            No high, medium, low, or informational findings were identified
-            in this scan run.
-        </div>
     </div>
 </div>
 """
