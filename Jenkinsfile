@@ -225,8 +225,6 @@ EOF
 
         // ═══════════════════════════════════════════════════════════
         // ZAP runs as sidecar — shared emptyDir volume at /zap/wrk
-        // Both scan + branding happen inside the zap container
-        // because Python3 is available there (jnlp has none)
         // ═══════════════════════════════════════════════════════════
         stage('DAST Scan (OWASP ZAP)') {
             steps {
@@ -262,6 +260,14 @@ EOF
                     archiveArtifacts artifacts: 'zap-report.html',
                                        fingerprint:        true,
                                        allowEmptyArchive: true
+                    publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: 'zap-report.html',
+                    reportName: 'DAST Security Report'
+                ])
                 }
             }
         }
