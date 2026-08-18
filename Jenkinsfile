@@ -171,27 +171,55 @@ EOF
             }
         }
 
-        stage('Security Scan (Syft & Grype)') {
-            steps {
-                container('syft-grype') {
-                    sh '''
-                        syft "${IMAGE_NAME}:${IMAGE_TAG}" \
-                            --scope all-layers \
-                            -o json > sbom.json
+       stage('Security Scan (Syft & Grype)') {
+    steps {
+        container('syft-grype') {
+            sh '''
+                set -e
 
-                        echo "===== Syft SBOM ====="
-                        syft "${IMAGE_NAME}:${IMAGE_TAG}" \
-                            --scope all-layers \
-                            -o table
+                echo "=========================================="
+                echo "        SECURITY SCAN"
+                echo "=========================================="
 
-                        grype "${IMAGE_NAME}:${IMAGE_TAG}" -o json > grype-report.json
+                echo ""
+                echo "===== Running Syft ====="
 
-                        echo "===== Grype Summary ====="
-                        grype "${IMAGE_NAME}:${IMAGE_TAG}" -o table
-                    '''
-                }
-            }
+                time syft "${IMAGE_NAME}:${IMAGE_TAG}" \
+                    --scope all-layers \
+                    -o json > sbom.json
+
+                echo ""
+                echo "===== Syft Summary ====="
+
+                syft sbom.json -o table
+
+                echo ""
+                echo "===== Running Grype ====="
+
+                time grype sbom.json \
+                    -o json > grype-report.json
+
+                echo ""
+                echo "===== Grype Summary ====="
+
+                grype sbom.json -o table
+
+                echo ""
+                echo "=========================================="
+                echo "Security scan completed"
+                echo "=========================================="
+
+                echo ""
+                echo "SBOM:"
+                ls -lh sbom.json
+
+                echo ""
+                echo "Grype Report:"
+                ls -lh grype-report.json
+            '''
         }
+    }
+}
 
         stage('GitOps Update Manifests') {
             steps {
