@@ -191,29 +191,20 @@ EOF
                 echo ""
                 echo "===== Syft Summary ====="
 
-                printf "%-45s %-20s %-15s %-20s\\n" \
-                    "NAME" "VERSION" "TYPE" "PATH"
+                {
+                    echo -e "NAME\\tVERSION\\tTYPE\\tPATH"
 
-                printf "%-45s %-20s %-15s %-20s\\n" \
-                    "---------------------------------------------" \
-                    "--------------------" \
-                    "---------------" \
-                    "--------------------"
-
-                jq -r '
-                    .artifacts[] |
-                    [
-                        .name,
-                        .version,
-                        .type,
-                        (.locations[0].path // "-")
-                    ] |
-                    @tsv
-                ' sbom.json | while IFS=$'\\t' read -r name version type path
-                do
-                    printf "%-45s %-20s %-15s %-20s\\n" \
-                        "$name" "$version" "$type" "$path"
-                done
+                    jq -r '
+                        .artifacts[] |
+                        [
+                            .name,
+                            .version,
+                            .type,
+                            (.locations[0].path // "-")
+                        ] |
+                        @tsv
+                    ' sbom.json
+                } | column -t -s $'\\t'
 
                 echo ""
                 echo "===== Running Grype ====="
