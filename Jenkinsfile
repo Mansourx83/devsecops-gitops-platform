@@ -267,52 +267,52 @@ EOF
         // ═══════════════════════════════════════════════════════════
         // ZAP runs as sidecar — shared emptyDir volume at /zap/wrk
         // ═══════════════════════════════════════════════════════════
-        stage('DAST Scan (OWASP ZAP)') {
-            steps {
-                container('zap') {
-                    sh """
-                        echo "=========================================="
-                        echo "  OWASP ZAP Baseline Scan"
-                        echo "  Target: ${APP_URL}"
-                        echo "=========================================="
+       stage('DAST Scan (OWASP ZAP)') {
+    steps {
+        container('zap') {
+            sh '''
+                echo "=========================================="
+                echo "  OWASP ZAP Baseline Scan"
+                echo "  Target: ${APP_URL}"
+                echo "=========================================="
 
-                        # FIX: zap-baseline.py prepends /zap/wrk/ automatically
-                        # so pass filename only — NOT the full path
-                        zap-baseline.py \
-                            -t "${APP_URL}" \
-                            -r zap-report-raw.html \
-                            -T 2 \
-                            -I || true
+                # zap-baseline.py prepends /zap/wrk/ automatically
+                zap-baseline.py \\
+                    -t "${APP_URL}" \\
+                    -r zap-report-raw.html \\
+                    -T 2 \\
+                    -I || true
 
-                        echo "Scan complete — report size: \$(wc -c < /zap/wrk/zap-report-raw.html) bytes"
+                echo "Scan complete — report size: $(wc -c < /zap/wrk/zap-report-raw.html) bytes"
+                test -f "${WORKSPACE}/reporting/brand_zap_report.py"
 
-                        # Apply branding using Python3 (available in ZAP image)
-                        python3 \${WORKSPACE}/brand_zap_report.py \
-                            /zap/wrk/zap-report-raw.html \
-                            \${WORKSPACE}/zap-report.html \
-                            \${WORKSPACE}/Logo.png
 
-                        echo "Branded report: \$(ls -lh \${WORKSPACE}/zap-report.html)"
-                    """
-                }
-            }
 
-            post {
-                always {
-                    archiveArtifacts artifacts: 'zap-report.html',
-                                       fingerprint:        true,
-                                       allowEmptyArchive: true
-                    publishHTML([
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: '.',
-                    reportFiles: 'zap-report.html',
-                    reportName: 'DAST Security Report'
-                ])
-                }
-            }
+                python3 "${WORKSPACE}/reporting/brand_zap_report.py" \\
+                    "/zap/wrk/zap-report-raw.html" \\
+                    "${WORKSPACE}/zap-report.html" \\
+                    "${WORKSPACE}/Logo.png"
+
+
+                test -s "${WORKSPACE}/zap-report.html"
+                echo "Branded report: $(ls -lh "${WORKSPACE}/zap-report.html")"
+            '''
         }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'zap-report.html',
+                reportName: 'Al Ahly Momkn - DAST Security Report'
+            ])
+        }
+    }
+}
         // ═══════════════════════════════════════════════════════════
 
     }
