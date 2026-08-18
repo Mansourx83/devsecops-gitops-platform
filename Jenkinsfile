@@ -191,7 +191,29 @@ EOF
                 echo ""
                 echo "===== Syft Summary ====="
 
-                syft scan sbom:./sbom.json -o table
+                printf "%-45s %-20s %-15s %-20s\\n" \
+                    "NAME" "VERSION" "TYPE" "PATH"
+
+                printf "%-45s %-20s %-15s %-20s\\n" \
+                    "---------------------------------------------" \
+                    "--------------------" \
+                    "---------------" \
+                    "--------------------"
+
+                jq -r '
+                    .artifacts[] |
+                    [
+                        .name,
+                        .version,
+                        .type,
+                        (.locations[0].path // "-")
+                    ] |
+                    @tsv
+                ' sbom.json | while IFS=$'\\t' read -r name version type path
+                do
+                    printf "%-45s %-20s %-15s %-20s\\n" \
+                        "$name" "$version" "$type" "$path"
+                done
 
                 echo ""
                 echo "===== Running Grype ====="
