@@ -268,42 +268,52 @@ EOF
         // ZAP runs as sidecar — shared emptyDir volume at /zap/wrk
         // ═══════════════════════════════════════════════════════════
        stage('DAST Scan (OWASP ZAP)') {
+
     steps {
+
         container('zap') {
+
             sh '''
                 echo "=========================================="
                 echo "  OWASP ZAP Baseline Scan"
                 echo "  Target: ${APP_URL}"
                 echo "=========================================="
 
-                # zap-baseline.py prepends /zap/wrk/ automatically
-                zap-baseline.py \\
-                    -t "${APP_URL}" \\
-                    -r zap-report-raw.html \\
-                    -T 2 \\
+                # Run OWASP ZAP
+                zap-baseline.py \
+                    -t "${APP_URL}" \
+                    -r zap-report-raw.html \
+                    -T 2 \
                     -I || true
 
                 echo "Scan complete — report size: $(wc -c < /zap/wrk/zap-report-raw.html) bytes"
+
+                # Verify branding script exists
                 test -f "${WORKSPACE}/reporting/brand_zap_report.py"
 
+                # Generate branded report
+                python3 "${WORKSPACE}/reporting/brand_zap_report.py" \
+                    "/zap/wrk/zap-report-raw.html" \
+                    "${WORKSPACE}/zap-report.html"
 
-
-                python3 "${WORKSPACE}/reporting/brand_zap_report.py" \\
-                    "/zap/wrk/zap-report-raw.html" \\
-                    "${WORKSPACE}/zap-report.html" \\
-                    "${WORKSPACE}/Logo.png"
-
-
+                # Verify generated report is not empty
                 test -s "${WORKSPACE}/zap-report.html"
-                echo "Branded report: $(ls -lh "${WORKSPACE}/zap-report.html")"
+
+                echo "=========================================="
+                echo "  Branded DAST Report Generated"
+                echo "=========================================="
+
+                ls -lh "${WORKSPACE}/zap-report.html"
             '''
         }
     }
 
     post {
+
         always {
+
             publishHTML([
-                allowMissing: false,
+                allowMissing: true,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
                 reportDir: '.',
