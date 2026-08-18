@@ -240,6 +240,7 @@ EOF
                         zap-baseline.py \
                             -t "${APP_URL}" \
                             -r zap-report-raw.html \
+                            -T 2 \
                             -I || true
 
                         echo "Scan complete — report size: \$(wc -c < /zap/wrk/zap-report-raw.html) bytes"
