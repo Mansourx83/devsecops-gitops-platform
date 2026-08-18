@@ -191,7 +191,7 @@ EOF
                 echo ""
                 echo "===== Syft Summary ====="
 
-                syft sbom.json -o table
+                syft scan sbom:./sbom.json -o table
 
                 echo ""
                 echo "===== Running Grype ====="
