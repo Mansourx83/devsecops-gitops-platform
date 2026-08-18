@@ -268,69 +268,97 @@ EOF
         // ZAP runs as sidecar — shared emptyDir volume at /zap/wrk
         // ═══════════════════════════════════════════════════════════
        stage('DAST Scan (OWASP ZAP)') {
+            steps {
+                container('zap') {
+                    sh '''
+                        set -e
 
-    steps {
+                        echo "=========================================="
+                        echo "  OWASP ZAP Baseline Scan"
+                        echo "  Target: ${APP_URL}"
+                        echo "=========================================="
 
-        container('zap') {
+                        zap-baseline.py \
+                            -t "${APP_URL}" \
+                            -r zap-report-raw.html \
+                            -J zap-report.json \
+                            -T 2 \
+                            -I || true
 
-            sh '''
-                echo "=========================================="
-                echo "  OWASP ZAP Baseline Scan"
-                echo "  Target: ${APP_URL}"
-                echo "=========================================="
+                        echo ""
+                        echo "Scan complete"
 
-                # Run OWASP ZAP
-                zap-baseline.py \
-                    -t "${APP_URL}" \
-                    -r zap-report-raw.html \
-                    -T 2 \
-                    -I || true
+                        test -s /zap/wrk/zap-report-raw.html
+                        test -s /zap/wrk/zap-report.json
 
-                echo "Scan complete — report size: $(wc -c < /zap/wrk/zap-report-raw.html) bytes"
+                        cp /zap/wrk/zap-report-raw.html "${WORKSPACE}/zap-report-raw.html"
+                        cp /zap/wrk/zap-report.json "${WORKSPACE}/zap-report.json"
 
-                # Verify branding script exists
-                test -f "${WORKSPACE}/reporting/brand_zap_report.py"
+                        echo "ZAP HTML:"
+                        ls -lh "${WORKSPACE}/zap-report-raw.html"
 
-                # Generate branded report
-                python3 "${WORKSPACE}/reporting/brand_zap_report.py" \
-                    "/zap/wrk/zap-report-raw.html" \
-                    "${WORKSPACE}/zap-report.html"
-
-                # Verify generated report is not empty
-                test -s "${WORKSPACE}/zap-report.html"
-
-                echo "=========================================="
-                echo "  Branded DAST Report Generated"
-                echo "=========================================="
-
-                ls -lh "${WORKSPACE}/zap-report.html"
-            '''
+                        echo "ZAP JSON:"
+                        ls -lh "${WORKSPACE}/zap-report.json"
+                    '''
+                }
+            }
         }
-    }
 
-    post {
+        stage('Generate Unified Security Report') {
+            steps {
+                container('zap') {
+                    sh '''
+                        set -e
 
-        always {
+                        echo "=========================================="
+                        echo "  GENERATING UNIFIED SECURITY REPORT"
+                        echo "=========================================="
 
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: '.',
-                reportFiles: 'zap-report.html',
-                reportName: 'Al Ahly Momkn - DAST Security Report'
-            ])
+                        test -s "${WORKSPACE}/zap-report.json"
+                        test -s "${WORKSPACE}/grype-report.json"
+                        test -s "${WORKSPACE}/sbom.json"
+                        test -f "${WORKSPACE}/reporting/security_report.py"
+
+                        python3 "${WORKSPACE}/reporting/security_report.py" \
+                            "${WORKSPACE}/zap-report.json" \
+                            "${WORKSPACE}/grype-report.json" \
+                            "${WORKSPACE}/sbom.json" \
+                            "${WORKSPACE}/security-report.html"
+
+                        test -s "${WORKSPACE}/security-report.html"
+
+                        echo ""
+                        echo "Unified Security Report:"
+                        ls -lh "${WORKSPACE}/security-report.html"
+                    '''
+                }
+            }
+
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: '.',
+                        reportFiles: 'security-report.html',
+                        reportName: 'Al Ahly Momkn - Unified Security Assessment'
+                    ])
+                }
+            }
         }
-    }
-}
+
         // ═══════════════════════════════════════════════════════════
 
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'sbom.json, grype-report.json, zap-report.html',
-                                     allowEmptyArchive: true
+            archiveArtifacts(
+                artifacts: 'sbom.json, grype-report.json, zap-report.json, zap-report-raw.html, security-report.html',
+                allowEmptyArchive: true,
+                fingerprint: true
+            )
         }
         success {
             echo "✅ Pipeline succeeded: ${IMAGE_NAME}:${IMAGE_TAG}"
